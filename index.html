@@ -1,0 +1,187 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Portfolio QLIO</title>
+  <meta name="description" content="Portfolio des apprentissages critiques QLIO">
+  <style>
+    :root { --ink:#172033; --muted:#667085; --paper:#f5f7fb; --card:#fff; --line:#e4e7ec; --accent:#2457c5; }
+    * { box-sizing:border-box; }
+    body { margin:0; font:16px/1.55 system-ui,-apple-system,Segoe UI,sans-serif; color:var(--ink); background:var(--paper); }
+    header { padding:42px 20px 30px; color:white; background:linear-gradient(135deg,#172554,#2457c5); }
+    .wrap { max-width:1050px; margin:auto; }
+    h1 { margin:0 0 8px; font-size:clamp(2rem,5vw,3rem); line-height:1.1; }
+    header p { max-width:700px; margin:0; color:#e4eaff; }
+    main { padding:24px 20px 60px; }
+    .toolbar { display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin-bottom:20px; }
+    input,select,textarea,button { font:inherit; }
+    input,select,textarea { width:100%; padding:10px 12px; border:1px solid var(--line); border-radius:10px; background:white; color:var(--ink); }
+    #search { flex:1 1 240px; }
+    .filters { flex:0 1 220px; }
+    button { border:0; border-radius:10px; padding:10px 14px; cursor:pointer; background:var(--accent); color:white; font-weight:650; }
+    button.secondary { background:#e9eefb; color:#173b8a; }
+    button.danger { background:#9f2636; }
+    .status { color:var(--muted); font-size:.92rem; margin:10px 0 18px; }
+    .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,300px),1fr)); gap:16px; }
+    .card { background:var(--card); border:1px solid var(--line); border-radius:16px; padding:20px; box-shadow:0 5px 18px #1720330a; }
+    .tag { display:inline-block; border-radius:999px; padding:4px 9px; font-size:.78rem; font-weight:700; background:#e9eefb; color:#173b8a; margin-bottom:10px; }
+    h2 { margin:0 0 8px; font-size:1.2rem; }
+    .field { margin-top:13px; }
+    .field strong { display:block; font-size:.85rem; color:#475467; margin-bottom:3px; }
+    .field p { margin:0; white-space:pre-wrap; }
+    .admin { margin:0 0 20px; padding:18px; border:1px solid #b8c9f7; border-radius:16px; background:#eef3ff; }
+    .admin h2 { margin-bottom:10px; }
+    .admin-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:10px; }
+    .admin-actions { display:flex; flex-wrap:wrap; gap:8px; margin-top:12px; }
+    .hidden { display:none !important; }
+    .empty { background:white; border:1px dashed #cbd5e1; padding:22px; border-radius:14px; color:var(--muted); }
+    footer { text-align:center; color:var(--muted); padding:20px; font-size:.9rem; }
+    @media(max-width:600px) { header { padding-top:32px; } main { padding-inline:14px; } }
+  </style>
+</head>
+<body>
+<header>
+  <div class="wrap">
+    <h1>Portfolio QLIO</h1>
+    <p>Mes apprentissages critiques en Qualité, Logistique industrielle et Organisation.</p>
+  </div>
+</header>
+<main class="wrap">
+  <section id="loginPanel" class="admin hidden">
+    <h2>Connexion administrateur</h2>
+    <p>La consultation est publique. Connecte-toi pour modifier les fiches.</p>
+    <div class="admin-grid">
+      <input id="email" type="email" autocomplete="username" placeholder="Adresse e-mail">
+      <input id="password" type="password" autocomplete="current-password" placeholder="Mot de passe">
+    </div>
+    <div class="admin-actions">
+      <button id="loginBtn">Se connecter</button>
+      <button id="cancelLoginBtn" class="secondary">Annuler</button>
+    </div>
+    <p id="loginMessage" class="status" role="status"></p>
+  </section>
+
+  <section id="adminPanel" class="admin hidden">
+    <h2>Mode édition</h2>
+    <p id="adminMessage">Tu es connecté.</p>
+    <div class="admin-actions"><button id="logoutBtn" class="secondary">Se déconnecter</button></div>
+  </section>
+
+  <div class="toolbar">
+    <input id="search" type="search" placeholder="Rechercher un apprentissage critique…">
+    <select id="category" class="filters" aria-label="Filtrer par catégorie">
+      <option value="">Toutes les catégories</option>
+      <option>Organisation</option><option>Logistique</option><option>Qualité</option>
+    </select>
+    <button id="loginToggle" class="secondary">Connexion admin</button>
+  </div>
+  <p id="status" class="status">Chargement du portfolio…</p>
+  <section id="cards" class="grid"></section>
+</main>
+<footer>Portfolio QLIO · Consultation publique</footer>
+
+<script type="module">
+  import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm';
+
+  // Remplace ces deux valeurs par celles de ton projet Supabase.
+  const SUPABASE_URL = 'COLLE_ICI_URL_SUPABASE';
+  const SUPABASE_PUBLISHABLE_KEY = 'COLLE_ICI_CLE_PUBLISHABLE_SUPABASE';
+
+  const configured = SUPABASE_URL.startsWith('https://') &&
+    SUPABASE_PUBLISHABLE_KEY !== 'COLLE_ICI_CLE_PUBLISHABLE_SUPABASE';
+
+  const $ = (id) => document.getElementById(id);
+  let supabase = null, items = [], isAdmin = false, session = null;
+  const categories = ['Organisation','Logistique','Qualité'];
+  const fields = [
+    ['context','Contexte'],['objective','Objectif'],['actions','Actions réalisées'],
+    ['evidence','Preuves / livrables'],['result','Résultat'],['reflection','Bilan personnel']
+  ];
+
+  function escapeHtml(value='') {
+    return String(value).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  }
+  function showStatus(message) { $('status').textContent = message; }
+  function render() {
+    const q = $('search').value.toLowerCase().trim();
+    const cat = $('category').value;
+    const filtered = items.filter(x => (!cat || x.category === cat) &&
+      [x.title,x.category,x.context,x.objective,x.actions,x.evidence,x.result,x.reflection].some(v => String(v || '').toLowerCase().includes(q)));
+    $('cards').innerHTML = filtered.map(item => `
+      <article class="card">
+        <span class="tag">${escapeHtml(item.category)}</span>
+        ${isAdmin ? `<label class="field"><strong>Titre</strong><input data-id="${item.id}" data-field="title" value="${escapeHtml(item.title)}"></label>` : `<h2>${escapeHtml(item.title)}</h2>`}
+        ${fields.map(([key,label]) => isAdmin
+          ? `<label class="field"><strong>${label}</strong><textarea rows="3" data-id="${item.id}" data-field="${key}">${escapeHtml(item[key] || '')}</textarea></label>`
+          : (item[key] ? `<div class="field"><strong>${label}</strong><p>${escapeHtml(item[key])}</p></div>` : '')
+        ).join('')}
+        ${isAdmin ? `<div class="admin-actions"><button data-save="${item.id}">Enregistrer</button></div>` : ''}
+      </article>`).join('');
+    if (!filtered.length) $('cards').innerHTML = '<div class="empty">Aucun apprentissage critique ne correspond à cette recherche.</div>';
+    $('status').textContent = `${filtered.length} apprentissage(s) critique(s) affiché(s) sur ${items.length}.`;
+  }
+  async function loadItems() {
+    if (!configured) {
+      showStatus('Configuration nécessaire : ajoute l’URL et la clé Supabase dans index.html.');
+      $('cards').innerHTML = '<div class="empty">Le site est prêt, mais il faut d’abord le relier à ton projet Supabase. Consulte le fichier README.</div>';
+      return;
+    }
+    const { data, error } = await supabase.from('learning_criticals').select('*').order('category').order('sort_order');
+    if (error) { showStatus('Erreur de chargement : ' + error.message); return; }
+    items = data || []; render();
+  }
+  async function refreshAuth() {
+    const { data } = await supabase.auth.getSession();
+    session = data.session;
+    isAdmin = false;
+    if (session) {
+      const { data: row, error } = await supabase.from('admin_users').select('user_id').eq('user_id', session.user.id).maybeSingle();
+      isAdmin = !error && !!row;
+    }
+    $('adminPanel').classList.toggle('hidden', !isAdmin);
+    $('loginToggle').textContent = isAdmin ? 'Mode édition actif' : 'Connexion admin';
+    $('adminMessage').textContent = isAdmin ? 'Tu peux modifier les fiches puis cliquer sur Enregistrer.' :
+      'Compte connecté, mais non autorisé à modifier le portfolio.';
+    if (session && !isAdmin) $('adminPanel').classList.remove('hidden');
+    render();
+  }
+
+  $('search').addEventListener('input', render);
+  $('category').addEventListener('change', render);
+  $('loginToggle').addEventListener('click', () => $('loginPanel').classList.toggle('hidden'));
+  $('cancelLoginBtn').addEventListener('click', () => $('loginPanel').classList.add('hidden'));
+  $('loginBtn').addEventListener('click', async () => {
+    $('loginMessage').textContent = '';
+    const { error } = await supabase.auth.signInWithPassword({ email: $('email').value, password: $('password').value });
+    if (error) { $('loginMessage').textContent = 'Connexion impossible : ' + error.message; return; }
+    $('loginPanel').classList.add('hidden'); await refreshAuth();
+  });
+  $('logoutBtn').addEventListener('click', async () => { await supabase.auth.signOut(); await refreshAuth(); });
+  $('cards').addEventListener('click', async (event) => {
+    const button = event.target.closest('[data-save]');
+    if (!button || !isAdmin) return;
+    const id = Number(button.dataset.save);
+    const card = button.closest('.card');
+    const update = {};
+    card.querySelectorAll('[data-field]').forEach(el => update[el.dataset.field] = el.value);
+    const { error } = await supabase.from('learning_criticals').update(update).eq('id', id);
+    if (error) { alert('Enregistrement impossible : ' + error.message); return; }
+    showStatus('Fiche enregistrée.'); await loadItems();
+  });
+
+  if (configured) {
+    supabase = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY);
+    supabase.auth.onAuthStateChange(() => { setTimeout(refreshAuth, 0); });
+    await refreshAuth();
+    await loadItems();
+  } else {
+    $('loginToggle').addEventListener('click', () => {
+      $('loginPanel').classList.remove('hidden');
+      $('loginMessage').textContent = 'Configure d’abord Supabase dans index.html.';
+    });
+    await loadItems();
+  }
+</script>
+</body>
+</html>
